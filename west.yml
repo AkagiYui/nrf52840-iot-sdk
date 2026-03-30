@@ -1,0 +1,30 @@
+# West manifest for my-app
+#
+# This manifest allows others to reproduce the full build environment with:
+#
+#   west init -m https://github.com/YOUR_USERNAME/my-app.git
+#   cd ..
+#   west update
+#
+# Then build with:
+#   west build -p always -b xiao_ble my-app
+
+manifest:
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject
+      revision: v4.4.0-rc1
+      import:
+        # By default, skip babblesim, optional, and testing groups
+        # to reduce download size. Uncomment if needed.
+        name-allowlist:
+          - hal_nordic
+          - mbedtls
+          - picolibc
+
+  self:
+    path: my-app
