@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RGB LED BLE 控制器</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --border: #2e3247;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --red: #ef4444;
+      --green: #22c55e;
+      --blue: #3b82f6;
+      --red-dim: #7f1d1d;
+      --green-dim: #14532d;
+      --blue-dim: #1e3a5f;
+      --radius: 16px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    /* Status bar */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: 0.85rem;
+      margin-bottom: 28px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background .3s;
+    }
+
+    .dot.connected {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    .dot.scanning {
+      background: #f59e0b;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .3
+      }
+    }
+
+    /* Connect button */
+    #btn-connect {
+      display: block;
+      width: 100%;
+      max-width: 360px;
+      padding: 14px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      transition: opacity .2s, transform .1s;
+      margin-bottom: 36px;
+    }
+
+    #btn-connect:hover {
+      opacity: .9;
+    }
+
+    #btn-connect:active {
+      transform: scale(.97);
+    }
+
+    #btn-connect:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    /* LED grid */
+    .led-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      width: 100%;
+      max-width: 480px;
+      margin-bottom: 36px;
+    }
+
+    .led-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color .2s, box-shadow .2s, transform .1s;
+    }
+
+    .led-card:not(.disabled):hover {
+      transform: translateY(-2px);
+    }
+
+    .led-card:not(.disabled):active {
+      transform: scale(.96);
+    }
+
+    .led-card.disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+
+    .led-card[data-color="red"] .bulb-icon {
+      color: var(--red-dim);
+    }
+
+    .led-card[data-color="green"].bulb-icon {
+      color: var(--green-dim);
+    }
+
+    .led-card[data-color="blue"] .bulb-icon {
+      color: var(--blue-dim);
+    }
+
+    .led-card.on[data-color="red"] {
+      border-color: var(--red);
+      box-shadow: 0 0 18px var(--red-dim);
+    }
+
+    .led-card.on[data-color="green"] {
+      border-color: var(--green);
+      box-shadow: 0 0 18px var(--green-dim);
+    }
+
+    .led-card.on[data-color="blue"] {
+      border-color: var(--blue);
+      box-shadow: 0 0 18px var(--blue-dim);
+    }
+
+    .led-card.on[data-color="red"] .bulb-icon {
+      color: var(--red);
+    }
+
+    .led-card.on[data-color="green"].bulb-icon {
+      color: var(--green);
+    }
+
+    .led-card.on[data-color="blue"] .bulb-icon {
+      color: var(--blue);
+    }
+
+    .bulb-icon {
+      font-size: 2.4rem;
+      transition: color .2s;
+    }
+
+    .led-label {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .led-state {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .led-card.on .led-state {
+      color: inherit;
+    }
+
+    /* Notify log */
+    .log-wrap {
+      width: 100%;
+      max-width: 480px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .log-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #btn-clear {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+
+    #btn-clear:hover {
+      color: var(--text);
+    }
+
+    #log {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 10px 16px;
+      font-family: 'SF Mono', monospace;
+      font-size: 0.8rem;
+    }
+
+    .log-entry {
+      padding: 3px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .log-entry:last-child {
+      border: none;
+    }
+
+    .log-time {
+      color: var(--muted);
+      margin-right: 8px;
+    }
+
+    .log-val {
+      font-weight: 600;
+    }
+
+    .no-ble {
+      background: #7f1d1d;
+      border: 1px solid #ef4444;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+      max-width: 480px;
+      width: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>🔵 RGB LED 控制器</h1>
+    <p class="subtitle">Web Bluetooth API &nbsp;·&nbsp; nRF52840 XIAO BLE</p>
+  </header>
+
+  <div id="no-ble" class="no-ble" style="display:none">
+    ⚠️ 当前浏览器不支持 Web Bluetooth API。请使用 Chrome / Edge（桌面版），并开启 HTTPS 或 localhost。
+  </div>
+
+  <div id="status-bar">
+    <span class="dot" id="dot"></span>
+    <span id="status-text">未连接</span>
+  </div>
+
+  <button id="btn-connect">🔗 扫描并连接设备</button>
+
+  <div class="led-grid">
+    <div class="led-card disabled" data-color="red" data-index="0">
+      <span class="bulb-icon">💡</span>
+      <span class="led-label">红色 R</span>
+      <span class="led-state">——</span>
+    </div>
+    <div class="led-card disabled" data-color="green" data-index="1">
+      <span class="bulb-icon">💡</span>
+      <span class="led-label">绿色 G</span>
+      <span class="led-state">——</span>
+    </div>
+    <div class="led-card disabled" data-color="blue" data-index="2">
+      <span class="bulb-icon">💡</span>
+      <span class="led-label">蓝色 B</span>
+      <span class="led-state">——</span>
+    </div>
+  </div>
+
+  <div class="log-wrap">
+    <div class="log-header">
+      <span>📡 Notify 日志</span>
+      <button id="btn-clear">清空</button>
+    </div>
+    <div id="log">
+      <div style="color:var(--muted);padding:4px 0">等待通知...</div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    /* ── UUID ── */
+    const SVC_UUID = '12340000-0000-1000-8000-00805f9b34fb';
+    const CHAR_UUIDS = [
+      '12340001-0000-1000-8000-00805f9b34fb',  // Red
+      '12340002-0000-1000-8000-00805f9b34fb',  // Green
+      '12340003-0000-1000-8000-00805f9b34fb',  // Blue
+    ];
+    const NOTIFY_UUID = '12340004-0000-1000-8000-00805f9b34fb';
+
+    /* ── DOM ── */
+    const btnConnect = document.getElementById('btn-connect');
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('status-text');
+    const logEl = document.getElementById('log');
+    const btnClear = document.getElementById('btn-clear');
+    const cards = document.querySelectorAll('.led-card');
+
+    /* ── State ── */
+    let device = null;
+    let chars = [];          // [redChar, greenChar, blueChar]
+    let ledOn = [false, false, false];
+
+    /* ── BLE support check ── */
+    if (!navigator.bluetooth) {
+      document.getElementById('no-ble').style.display = 'block';
+      btnConnect.disabled = true;
+    }
+
+    /* ── UI helpers ── */
+    function setStatus(text, state) {   // state: 'idle' | 'scanning' | 'connected'
+      statusText.textContent = text;
+      dot.className = 'dot' + (state === 'connected' ? ' connected' : state === 'scanning' ? ' scanning' : '');
+    }
+
+    function setCardsEnabled(enabled) {
+      cards.forEach(c => {
+        if (enabled) c.classList.remove('disabled');
+        else c.classList.add('disabled');
+      });
+    }
+
+    function syncCard(idx, on) {
+      ledOn[idx] = on;
+      const card = cards[idx];
+      const state = card.querySelector('.led-state');
+      if (on) { card.classList.add('on'); state.textContent = '亮 ●'; }
+      else { card.classList.remove('on'); state.textContent = '灭 ○'; }
+    }
+
+    function appendLog(r, g, b) {
+      if (logEl.querySelector('div[style]')) logEl.innerHTML = '';
+      const t = new Date().toLocaleTimeString('zh', { hour12: false });
+      const bar = `R=${r} G=${g} B=${b}`;
+      const rgb = `rgb(${r ? 220 : 40},${g ? 200 : 40},${b ? 220 : 40})`;
+      const el = document.createElement('div');
+      el.className = 'log-entry';
+      el.innerHTML = `<span class="log-time">${t}</span>`
+        + `<span class="log-val" style="color:${rgb}">[${bar}]</span>`;
+      logEl.prepend(el);
+    }
+
+    /* ── Notify handler ── */
+    function onNotify(event) {
+      const v = event.target.value;
+      const r = v.getUint8(0), g = v.getUint8(1), b = v.getUint8(2);
+      [r, g, b].forEach((val, i) => syncCard(i, val === 1));
+      appendLog(r, g, b);
+    }
+
+    /* ── Connect ── */
+    btnConnect.addEventListener('click', async () => {
+      if (device && device.gatt.connected) {
+        device.gatt.disconnect();
+        return;
+      }
+      try {
+        setStatus('扫描中...', 'scanning');
+        btnConnect.disabled = true;
+
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'RGB LED BLE Demo' }],
+          optionalServices: [SVC_UUID],
+        });
+
+        device.addEventListener('gattserverdisconnected', () => {
+          setStatus('已断开', 'idle');
+          btnConnect.textContent = '🔗 扫描并连接设备';
+          btnConnect.disabled = false;
+          setCardsEnabled(false);
+          chars = [];
+        });
+
+        setStatus('连接中...', 'scanning');
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SVC_UUID);
+
+        /* 获取 3 个写特征值 */
+        chars = await Promise.all(CHAR_UUIDS.map(u => service.getCharacteristic(u)));
+
+        /* 订阅 Notify */
+        const notifyChar = await service.getCharacteristic(NOTIFY_UUID);
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+
+        setStatus(`已连接: ${device.name}`, 'connected');
+        btnConnect.textContent = '⛔ 断开连接';
+        btnConnect.disabled = false;
+        setCardsEnabled(true);
+        /* 初始状态全灭 */
+        [0, 1, 2].forEach(i => syncCard(i, false));
+
+      } catch (err) {
+        if (err.name !== 'NotFoundError') console.error(err);
+        setStatus('未连接', 'idle');
+        btnConnect.textContent = '🔗 扫描并连接设备';
+        btnConnect.disabled = false;
+      }
+    });
+
+    /* ── LED card click ── */
+    cards.forEach((card, idx) => {
+      card.addEventListener('click', async () => {
+        if (card.classList.contains('disabled') || !chars[idx]) return;
+        const newVal = ledOn[idx] ? 0 : 1;
+        try {
+          await chars[idx].writeValueWithoutResponse(new Uint8Array([newVal]));
+          /* Notify 会反向确认真实状态；此处做乐观更新 */
+          syncCard(idx, newVal === 1);
+        } catch (err) {
+          console.error('写入失败:', err);
+        }
+      });
+    });
+
+    /* ── 清空日志 ── */
+    btnClear.addEventListener('click', () => {
+      logEl.innerHTML = '<div style="color:var(--muted);padding:4px 0">已清空</div>';
+    });
+  </script>
+</body>
+
+</html>
