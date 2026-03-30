@@ -68,6 +68,23 @@ static struct bt_uuid_128 uuid_notify = BT_UUID_INIT_128(BT_UUID_RGB_NOTIFY_VAL)
 
 static struct bt_conn *current_conn;
 
+/* 前置声明：广播启动（定义在广播数据之后） */
+static void start_advertising(void);
+
+/*
+ * 用 k_work 将广播启动推迟到系统工作队列执行。
+ * disconnected 回调运行在 BLE RX 线程，此时控制器尚未完全释放连接资源，
+ * 直接调用 bt_le_adv_start 会返回 -EBUSY 导致广播实际未启动。
+ * 通过工作队列延迟到 BLE 栈处理完断连后再启动，可保证每次都成功。
+ */
+static struct k_work adv_work;
+
+static void adv_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	start_advertising();
+}
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	if (err) {
@@ -80,18 +97,15 @@ static void connected(struct bt_conn *conn, uint8_t err)
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
-	ARG_UNUSED(reason);
+	ARG_UNUSED(conn);
 	if (current_conn) {
 		bt_conn_unref(current_conn);
 		current_conn = NULL;
 	}
-	printk("[BLE] 已断开, reason=0x%02x，重新开始广播...\n", reason);
+	printk("[BLE] 已断开, reason=0x%02x，延迟重启广播...\n", reason);
 
-	int ret = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, NULL, 0, NULL, 0);
-
-	if (ret) {
-		printk("[BLE] 广播启动失败: %d\n", ret);
-	}
+	/* 提交到系统工作队列，在 BLE RX 线程之外执行 */
+	k_work_submit(&adv_work);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -260,6 +274,20 @@ static const struct bt_data sd[] = {
 		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+/* 统一的广播启动函数，确保每次带相同的 ad/sd 数据 */
+static void start_advertising(void)
+{
+	int ret = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+				  ad, ARRAY_SIZE(ad),
+				  sd, ARRAY_SIZE(sd));
+
+	if (ret) {
+		printk("[BLE] 广播启动失败: %d\n", ret);
+	} else {
+		printk("[BLE] 广播已开始，设备名: \"%s\"\n", CONFIG_BT_DEVICE_NAME);
+	}
+}
+
 /* ============ BLE 初始化回调 ============ */
 
 static void bt_ready(int err)
@@ -271,14 +299,7 @@ static void bt_ready(int err)
 
 	printk("[BLE] 初始化完成\n");
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
-			      sd, ARRAY_SIZE(sd));
-	if (err) {
-		printk("[BLE] 广播启动失败: %d\n", err);
-		return;
-	}
-
-	printk("[BLE] 广播已开始，设备名: \"%s\"\n", CONFIG_BT_DEVICE_NAME);
+	start_advertising();
 	printk("[BLE] 等待手机连接...\n");
 	printk("[BLE] 写 Red   UUID 末段 0x0001: 0x01=亮, 0x00=灭\n");
 	printk("[BLE] 写 Green UUID 末段 0x0002: 0x01=亮, 0x00=灭\n");
@@ -312,6 +333,9 @@ int main(void)
 	}
 
 	printk("[LED] GPIO 配置完成，初始状态：全灭\n");
+
+	/* 初始化广播工作队列项 */
+	k_work_init(&adv_work, adv_work_handler);
 
 	/* 启动 BLE */
 	ret = bt_enable(bt_ready);
