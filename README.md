@@ -121,3 +121,9 @@ python3 -m http.server 8765 --directory my-app
 LED 到引脚的映射定义在 Zephyr 板级设备树文件
 `zephyr/boards/seeed/xiao_ble/xiao_ble_common.dtsi` 中。
 如需为自制板修改引脚映射，在项目中添加 `boards/xiao_ble.overlay` 文件覆盖即可。
+
+## 一些资料
+
+- https://docs.zephyrproject.org/latest/boards/seeed/xiao_ble/doc/index.html
+- https://wiki.seeedstudio.com/cn/XIAO_BLE/
+- https://www.nologo.tech/product/keyboard/keyboard_controll/super52840/super528401.html
